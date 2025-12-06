@@ -1,5 +1,5 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { generateText } from 'ai';
+import { streamText } from 'ai';
 
 const STORAGE_KEY = 'openrouterApiKey';
 const MODEL_KEY = 'selectedModel';
@@ -33,7 +33,7 @@ async function getSelectedModel(): Promise<string> {
 }
 
 export default defineBackground(() => {
-  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'BRIEF_PROBLEM') {
       (async () => {
         try {
@@ -53,14 +53,14 @@ export default defineBackground(() => {
             },
           });
 
-          const { text } = await generateText({
+          const result = await streamText({
             model: openrouter(modelId),
             temperature: 0.2,
             prompt: [
               'You are an expert competitive programming tutor.',
               'Provide a concise brief of the problem: goal, input/output format, important constraints, and key requirements.',
               'Keep it under 180 words and do not provide solution hints.',
-              'Use KaTeX/LaTeX syntax for mathematical expressions:',
+              'Use LaTeX syntax for mathematical expressions:',
               '- Inline math: $x + y$',
               '- Display math: $$\\sum_{i=1}^{n} i$$',
               'Format your response in markdown.',
@@ -70,14 +70,31 @@ export default defineBackground(() => {
             ].join('\n'),
           });
 
-          const summary = text.trim();
-          if (!summary) {
-            sendResponse({ error: 'No summary returned. Please try again.' });
-            return;
+          // Stream the text chunks to the content script
+          let accumulatedText = '';
+          for await (const chunk of result.textStream) {
+            accumulatedText += chunk;
+            
+            // Send streaming update to the tab
+            if (sender.tab?.id) {
+              browser.tabs.sendMessage(sender.tab.id, {
+                type: 'BRIEF_CHUNK',
+                markdown: accumulatedText,
+                done: false,
+              });
+            }
           }
 
-          // Return raw markdown, rendering happens in content script
-          sendResponse({ markdown: summary });
+          // Send final message
+          if (sender.tab?.id) {
+            browser.tabs.sendMessage(sender.tab.id, {
+              type: 'BRIEF_CHUNK',
+              markdown: accumulatedText,
+              done: true,
+            });
+          }
+
+          sendResponse({ streaming: true });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           sendResponse({ error: errorMessage });

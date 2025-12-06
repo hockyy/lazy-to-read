@@ -17,6 +17,17 @@ function injectScript(src: string): Promise<void> {
   });
 }
 
+function injectModuleScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    (document.head || document.documentElement).appendChild(script);
+  });
+}
+
 function loadStylesheet(href: string): void {
   if (document.querySelector(`link[href="${href}"]`)) return;
   const link = document.createElement('link');
@@ -38,14 +49,10 @@ async function ensureLibraries(): Promise<void> {
 
   const extUrl = (browser.runtime.getURL as (path: string) => string)('libs/');
   
-  // Load KaTeX CSS
-  loadStylesheet(extUrl + 'katex.min.css');
-  
   // Load the injected script that will handle rendering in page context
   await ensureInjectedScript();
   
-  // Load libraries into page context
-  await injectScript(extUrl + 'katex.min.js');
+  // Load marked into page context
   await injectScript(extUrl + 'marked.min.js');
   
   // Wait for libraries to be available via event
@@ -208,12 +215,12 @@ function ensureStyles() {
       color: #475569;
     }
 
-    #${SUMMARY_CONTAINER_ID} .katex {
+    #${SUMMARY_CONTAINER_ID} .MathJax {
       font-size: 1em;
     }
 
-    #${SUMMARY_CONTAINER_ID} .katex-display {
-      margin: 12px 0;
+    #${SUMMARY_CONTAINER_ID} mjx-container {
+      margin: 8px 0;
       overflow-x: auto;
     }
   `;
@@ -304,6 +311,31 @@ async function briefProblem(problemEl: HTMLElement, button: HTMLButtonElement, s
   button.disabled = true;
   renderStatus(statusEl, 'Briefing...');
 
+  // Prepare streaming container
+  const summaryContainer = getOrCreateSummaryContainer(problemEl);
+  const body = summaryContainer.querySelector('.lazy-to-read-body') as HTMLElement;
+
+  // Set up streaming listener
+  const streamListener = async (message: any) => {
+    if (message.type === 'BRIEF_CHUNK') {
+      if (body) {
+        try {
+          await renderMarkdownWithMath(message.markdown, body);
+        } catch (error) {
+          console.error('Rendering error:', error);
+        }
+      }
+      
+      if (message.done) {
+        browser.runtime.onMessage.removeListener(streamListener);
+        renderStatus(statusEl, 'Brief ready.', 'success');
+        button.disabled = false;
+      }
+    }
+  };
+
+  browser.runtime.onMessage.addListener(streamListener);
+
   try {
     const response = await browser.runtime.sendMessage({
       type: 'BRIEF_PROBLEM',
@@ -311,21 +343,15 @@ async function briefProblem(problemEl: HTMLElement, button: HTMLButtonElement, s
     });
 
     if (response.error) {
+      browser.runtime.onMessage.removeListener(streamListener);
       renderStatus(statusEl, response.error, 'error');
+      button.disabled = false;
       return;
     }
-
-    const summaryContainer = getOrCreateSummaryContainer(problemEl);
-    const body = summaryContainer.querySelector('.lazy-to-read-body') as HTMLElement;
-    if (body) {
-      await renderMarkdownWithMath(response.markdown, body);
-    }
-
-    renderStatus(statusEl, 'Brief ready.', 'success');
   } catch (error) {
+    browser.runtime.onMessage.removeListener(streamListener);
     const message = error instanceof Error ? error.message : 'Unknown error';
     renderStatus(statusEl, `Briefing failed: ${message}`, 'error');
-  } finally {
     button.disabled = false;
   }
 }

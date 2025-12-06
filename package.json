@@ -18,9 +18,6 @@
     "@openrouter/ai-sdk-provider": "^1.4.0",
     "ai": "^5.0.107",
     "dompurify": "^3.3.0",
-    "katex": "^0.16.25",
-    "marked": "^17.0.1",
-    "marked-katex-extension": "^5.1.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

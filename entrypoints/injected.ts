@@ -1,72 +1,59 @@
-// This script runs in the MAIN world (page context) and handles markdown/math rendering
+// This script runs in the MAIN world (page context) and handles markdown rendering
 
 declare global {
   interface Window {
-    katex?: any;
     marked?: any;
+    MathJax?: any;
   }
 }
 
 export default defineUnlistedScript(() => {
+  let mathjaxReady = false;
+  
+  // Listen for MathJax loaded event
+  window.addEventListener('lazy_to_read_mathjax_loaded', () => {
+    mathjaxReady = true;
+  });
+  
   // Listen for render requests from content script
   window.addEventListener('lazy_to_read_render_request', async (e: any) => {
     try {
       const { markdown, renderId } = e.detail;
       
-      // Wait for libraries to be available
+      // Wait for marked to be available
       let retries = 0;
-      while ((!window.katex || !window.marked) && retries < 100) {
+      while (!window.marked && retries < 100) {
         await new Promise(resolve => setTimeout(resolve, 50));
         retries++;
       }
       
-      if (!window.katex || !window.marked) {
-        throw new Error('Libraries not loaded');
+      if (!window.marked) {
+        throw new Error('Marked library not loaded');
       }
       
-      // Step 1: Extract and protect math expressions before markdown parsing
-      const mathPlaceholders: { id: string; content: string; display: boolean }[] = [];
-      let protectedMarkdown = markdown;
-      
-      // Protect display math $$...$$
-      protectedMarkdown = protectedMarkdown.replace(/\$\$([\s\S]+?)\$\$/g, (_match: string, content: string) => {
-        const id = `MATH_PLACEHOLDER_${mathPlaceholders.length}`;
-        mathPlaceholders.push({ id, content: content.trim(), display: true });
-        return id;
-      });
-      
-      // Protect inline math $...$
-      protectedMarkdown = protectedMarkdown.replace(/\$([^\n$]+?)\$/g, (_match: string, content: string) => {
-        const id = `MATH_PLACEHOLDER_${mathPlaceholders.length}`;
-        mathPlaceholders.push({ id, content: content.trim(), display: false });
-        return id;
-      });
-      
-      // Step 2: Parse markdown
-      let html = await window.marked.parse(protectedMarkdown);
+      // Parse markdown
+      const html = await window.marked.parse(markdown);
       const noBreaks = html.replace(/<br\s*\/?>/gi, ' ');
       
-      // Step 3: Restore and render math expressions
-      let finalHtml = noBreaks;
-      for (const placeholder of mathPlaceholders) {
-        try {
-          const rendered = window.katex.renderToString(placeholder.content, {
-            displayMode: placeholder.display,
-            throwOnError: false
-          });
-          finalHtml = finalHtml.replace(placeholder.id, rendered);
-        } catch (err) {
-          // If rendering fails, restore original syntax
-          const original = placeholder.display 
-            ? `$$${placeholder.content}$$` 
-            : `$${placeholder.content}$`;
-          finalHtml = finalHtml.replace(placeholder.id, original);
-        }
-      }
-      
       window.dispatchEvent(new CustomEvent('lazy_to_read_render_response', {
-        detail: { html: finalHtml, renderId }
+        detail: { html: noBreaks, renderId }
       }));
+      
+      // Trigger MathJax typesetting after a short delay
+      setTimeout(async () => {
+        if (window.MathJax) {
+          try {
+            // MathJax 4.0.0 API - typeset the document
+            if (window.MathJax.typesetPromise) {
+              await window.MathJax.typesetPromise();
+            } else if (window.MathJax.typeset) {
+              window.MathJax.typeset();
+            }
+          } catch (err: any) {
+            console.warn('MathJax typesetting error:', err);
+          }
+        }
+      }, 100);
     } catch (error: any) {
       window.dispatchEvent(new CustomEvent('lazy_to_read_render_response', {
         detail: { error: error.message, renderId: e.detail.renderId }
@@ -77,12 +64,10 @@ export default defineUnlistedScript(() => {
   // Listen for library check requests
   window.addEventListener('lazy_to_read_check_libs', (e: any) => {
     const { checkId } = e.detail;
-    const loaded = typeof window.katex !== 'undefined' && 
-                  typeof window.marked !== 'undefined';
+    const loaded = typeof window.marked !== 'undefined' && (mathjaxReady || typeof window.MathJax !== 'undefined');
     
     window.dispatchEvent(new CustomEvent('lazy_to_read_check_response', {
       detail: { loaded, checkId }
     }));
   });
 });
-
