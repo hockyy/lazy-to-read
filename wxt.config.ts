@@ -13,7 +13,7 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ['libs/*'],
+        resources: ['libs/*', 'injected.js'],
         matches: ['*://codeforces.com/*', '*://*.codeforces.com/*'],
       },
     ],

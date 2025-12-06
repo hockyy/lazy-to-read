@@ -4,31 +4,33 @@ const SUMMARY_CONTAINER_ID = 'lazy-to-read-summary';
 const BAR_ID = 'lazy-to-read-brief-bar';
 const BUTTON_ID = 'lazy-to-read-brief-button';
 
-declare global {
-  interface Window {
-    katex: any;
-    renderMathInElement: any;
-    marked: { parse: (md: string) => string | Promise<string> };
-  }
-}
-
 let librariesLoaded = false;
+let injectedScriptLoaded = false;
 
-function loadScript(src: string): Promise<void> {
+function injectScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(script);
+    (document.head || document.documentElement).appendChild(script);
   });
 }
 
 function loadStylesheet(href: string): void {
+  if (document.querySelector(`link[href="${href}"]`)) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = href;
-  document.head.appendChild(link);
+  (document.head || document.documentElement).appendChild(link);
+}
+
+async function ensureInjectedScript(): Promise<void> {
+  if (injectedScriptLoaded) return;
+  
+  const injectedUrl = (browser.runtime.getURL as (path: string) => string)('injected.js');
+  await injectScript(injectedUrl);
+  injectedScriptLoaded = true;
 }
 
 async function ensureLibraries(): Promise<void> {
@@ -39,12 +41,48 @@ async function ensureLibraries(): Promise<void> {
   // Load KaTeX CSS
   loadStylesheet(extUrl + 'katex.min.css');
   
-  // Load scripts in order
-  await loadScript(extUrl + 'katex.min.js');
-  await loadScript(extUrl + 'auto-render.min.js');
-  await loadScript(extUrl + 'marked.min.js');
+  // Load the injected script that will handle rendering in page context
+  await ensureInjectedScript();
   
-  librariesLoaded = true;
+  // Load libraries into page context
+  await injectScript(extUrl + 'katex.min.js');
+  await injectScript(extUrl + 'marked.min.js');
+  
+  // Wait for libraries to be available via event
+  let retries = 0;
+  while (retries < 100) {
+    const checkResult = await new Promise<boolean>((resolve) => {
+      const checkId = `check_${Date.now()}_${Math.random()}`;
+      
+      const listener = (e: CustomEvent) => {
+        if (e.detail.checkId === checkId) {
+          window.removeEventListener('lazy_to_read_check_response', listener as any);
+          resolve(e.detail.loaded);
+        }
+      };
+      
+      window.addEventListener('lazy_to_read_check_response', listener as any);
+      
+      window.dispatchEvent(new CustomEvent('lazy_to_read_check_libs', {
+        detail: { checkId }
+      }));
+      
+      setTimeout(() => {
+        window.removeEventListener('lazy_to_read_check_response', listener as any);
+        resolve(false);
+      }, 200);
+    });
+    
+    if (checkResult) {
+      librariesLoaded = true;
+      return;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 50));
+    retries++;
+  }
+  
+  throw new Error('Failed to load required libraries (timeout)');
 }
 
 function ensureStyles() {
@@ -224,24 +262,36 @@ function renderStatus(statusEl: HTMLElement, text: string, variant: 'info' | 'er
 async function renderMarkdownWithMath(markdown: string, target: HTMLElement): Promise<void> {
   await ensureLibraries();
 
-  // Parse markdown first
-  const html = await window.marked.parse(markdown);
-  const cleanHtml = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
-  const noBreaks = cleanHtml.replace(/<br\s*\/?>/gi, ' ');
-  target.innerHTML = noBreaks;
-
-  // Then render math with KaTeX auto-render
-  if (window.renderMathInElement) {
-    window.renderMathInElement(target, {
-      delimiters: [
-        { left: '$$', right: '$$', display: true },
-        { left: '$', right: '$', display: false },
-        { left: '\\[', right: '\\]', display: true },
-        { left: '\\(', right: '\\)', display: false },
-      ],
-      throwOnError: false,
-    });
-  }
+  const renderId = `render_${Date.now()}_${Math.random()}`;
+  
+  return new Promise((resolve, reject) => {
+    const listener = (e: CustomEvent) => {
+      if (e.detail.renderId === renderId) {
+        window.removeEventListener('lazy_to_read_render_response', listener as any);
+        
+        if (e.detail.error) {
+          reject(new Error(e.detail.error));
+        } else {
+          // Sanitize in content script context (has DOMPurify)
+          const cleanHtml = DOMPurify.sanitize(e.detail.html, { USE_PROFILES: { html: true } });
+          target.innerHTML = cleanHtml;
+          resolve();
+        }
+      }
+    };
+    
+    window.addEventListener('lazy_to_read_render_response', listener as any);
+    
+    // Send render request to injected script
+    window.dispatchEvent(new CustomEvent('lazy_to_read_render_request', {
+      detail: { markdown, renderId }
+    }));
+    
+    setTimeout(() => {
+      window.removeEventListener('lazy_to_read_render_response', listener as any);
+      reject(new Error('Rendering timeout'));
+    }, 10000);
+  });
 }
 
 async function briefProblem(problemEl: HTMLElement, button: HTMLButtonElement, statusEl: HTMLElement) {
