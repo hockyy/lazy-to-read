@@ -1,0 +1,157 @@
+.popup {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #0f172a;
+}
+
+.popup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.popup__header h1 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  letter-spacing: -0.3px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #576079;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #e3ecff;
+  color: #2f70ff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e6eaf2;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+form.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+input,
+select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #cfd6e4;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #f7f9fc;
+  box-sizing: border-box;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid #2f70ff;
+  border-color: #2f70ff;
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23576079' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.helper {
+  margin: 0;
+  font-size: 12px;
+  color: #4b5568;
+}
+
+.helper--small {
+  margin-top: -4px;
+  font-size: 11px;
+}
+
+.helper a {
+  color: #2f70ff;
+}
+
+button {
+  align-self: flex-start;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f70ff;
+  background: linear-gradient(120deg, #2f70ff, #5f8dff);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(47, 112, 255, 0.35);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0;
+  font-size: 12px;
+  color: #4b5568;
+}
+
+.status.saved {
+  color: #1e8c3a;
+}
+
+.status.error {
+  color: #d0342c;
+}
+
+.how-to h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.how-to ol {
+  padding-left: 18px;
+  margin: 0 0 10px;
+  color: #1f2a44;
+  line-height: 1.5;
+}
+
+.link {
+  display: inline-block;
+  color: #2f70ff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
